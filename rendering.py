@@ -39,38 +39,42 @@ class Scene:
     """
         OpenGL 2D scene class
     """
+
     # initialization
     def __init__(self,
-                width,
-                height,
-                bezier_curve_callback,
-                scene_title         = "2D Scene",
-                interpolation_fct   = None):
+                 width,
+                 height,
+                 curve_callback,
+                 scene_title="2D Scene",
+                 interpolation_fct=None):
 
-        self.width              = width
-        self.height             = height
-        self.scene_title        = scene_title
-        self.points             = []
-        self.points_on_bezier_curve = []
-        self.bezier_curve_callback = bezier_curve_callback
-        self.curve_type         = 'orthographic'
-        self.show_spline        = True
+        self.width = width
+        self.height = height
+        self.scene_title = scene_title
+        self.control_points = []
+        self.points_on_curve = []
+        self.curve_callback = curve_callback
+        self.curve_type = 'orthographic'
+        self.show_spline = True
 
         # Rendering
-        self.ctx                = None              # Assigned when calling init_gl()
-        self.bg_color           = (0.1, 0.1, 0.1)
-        self.point_size         = 7
-        self.point_color        = (1.0, 0.5, 0.5)
-        self.line_color         = (0.5, 0.5, 1.0)
-        self.curve_color        = (1.0, 0.0, 0.0)
+        self.ctx = None  # Assigned when calling init_gl()
+        self.bg_color = (0.1, 0.1, 0.1)
+        self.point_size = 7
+        self.point_color = (1.0, 0.5, 0.5)
+        self.line_color = (0.5, 0.5, 1.0)
+        self.curve_color = (1.0, 0.0, 0.0)
 
+        # B-Spline controls
+        self.degree = 3  # starting polynom degree of the B-Spline curve
+        self.num_curve_pts = 100  # starting number of curve points
 
     def init_gl(self, ctx):
-        self.ctx        = ctx
+        self.ctx = ctx
 
         # Create Shaders
         self.shader = ctx.program(
-            vertex_shader = """
+            vertex_shader="""
                 #version 330
 
                 uniform mat4    m_proj;
@@ -87,7 +91,7 @@ class Scene:
                     f_col           = color;
                 }
             """,
-            fragment_shader = """
+            fragment_shader="""
                 #version 330
 
                 in vec3 f_col;
@@ -106,18 +110,17 @@ class Scene:
         b, t = self.height, 0
         n, f = -2, 2
         m_proj = np.array([
-            [2/(r-l),   0,          0,          -(l+r)/(r-l)],
-            [0,         2/(t-b),    0,          -(b+t)/(t-b)],
-            [0,         0,          -2/(f-n),    -(n+f)/(f-n)],
-            [0,         0,          0,          1]
+            [2 / (r - l), 0, 0, -(l + r) / (r - l)],
+            [0, 2 / (t - b), 0, -(b + t) / (t - b)],
+            [0, 0, -2 / (f - n), -(n + f) / (f - n)],
+            [0, 0, 0, 1]
         ], dtype=np.float32)
         m_proj = np.ascontiguousarray(m_proj.T)
         self.shader['m_proj'].write(m_proj)
         self.shader['color'] = self.point_color
 
-
     def resize(self, width, height):
-        self.width  = width
+        self.width = width
         self.height = height
 
         # Set projection matrix
@@ -125,27 +128,25 @@ class Scene:
         b, t = self.height, 0
         n, f = -2, 2
         m_proj = np.array([
-            [2/(r-l),   0,          0,          -(l+r)/(r-l)],
-            [0,         2/(t-b),    0,          -(b+t)/(t-b)],
-            [0,         0,          -2/(f-n),    -(n+f)/(f-n)],
-            [0,         0,          0,          1]
+            [2 / (r - l), 0, 0, -(l + r) / (r - l)],
+            [0, 2 / (t - b), 0, -(b + t) / (t - b)],
+            [0, 0, -2 / (f - n), -(n + f) / (f - n)],
+            [0, 0, 0, 1]
         ], dtype=np.float32)
         m_proj = np.ascontiguousarray(m_proj.T)
         self.shader['m_proj'].write(m_proj)
 
-
     # set polygon
     def add_point(self, point):
-        self.points.append(point)
-        if len(self.points) >=2:
-            self.points_on_bezier_curve = self.bezier_curve_callback(self.points, self.curve_type)
-
+        self.control_points.append(point)
+        if len(self.control_points) >= 2:
+            self.points_on_curve = self.curve_callback(self.control_points, self.degree, self.num_curve_pts,
+                                                       self.curve_type)
 
     # clear polygon
     def clear(self):
-        self.points = []
-        self.points_on_bezier_curve = []
-
+        self.control_points = []
+        self.points_on_curve = []
 
     def render(self):
 
@@ -153,24 +154,22 @@ class Scene:
         self.ctx.clear(*self.bg_color)
 
         # Render all points and connecting lines
-        if len(self.points) > 0:
-            vbo_polygon = self.ctx.buffer(np.array(self.points, np.float32))
+        if len(self.control_points) > 0:
+            vbo_polygon = self.ctx.buffer(np.array(self.control_points, np.float32))
             vao_polygon = self.ctx.vertex_array(self.shader, [(vbo_polygon, '2f', 'v_pos')])
             self.shader['color'] = self.line_color
             vao_polygon.render(mgl.LINE_STRIP)
             self.shader['color'] = self.point_color
             vao_polygon.render(mgl.POINTS)
 
-        if self.show_spline and len(self.points_on_bezier_curve) > 1:
+        if self.show_spline and len(self.points_on_curve) > 1:
             self.shader['color'] = self.curve_color
-            vbo_polygon = self.ctx.buffer(np.array(self.points_on_bezier_curve, np.float32))
+            vbo_polygon = self.ctx.buffer(np.array(self.points_on_curve, np.float32))
             vao_polygon = self.ctx.vertex_array(self.shader, [(vbo_polygon, '2f', 'v_pos')])
             self.shader['color'] = self.curve_color
             vao_polygon.render(mgl.LINE_STRIP)
             self.shader['color'] = self.point_color
             vao_polygon.render(mgl.POINTS)
-
-
 
 
 class RenderWindow:
@@ -178,6 +177,7 @@ class RenderWindow:
         GLFW Rendering window class
         YOU SHOULD NOT EDIT THIS CLASS!
     """
+
     def __init__(self, scene):
 
         self.scene = scene
@@ -234,19 +234,17 @@ class RenderWindow:
         # exit flag
         self.exitNow = False
 
-
     def onMouseButton(self, win, button, action, mods):
         # Don't react to clicks on UI controllers
         if not imgui.get_io().want_capture_mouse:
-            #print("mouse button: ", win, button, action, mods)
+            # print("mouse button: ", win, button, action, mods)
             if action == glfw.PRESS:
                 x, y = glfw.get_cursor_pos(win)
                 p = [int(x), int(y)]
                 self.scene.add_point(p)
 
-
     def onKeyboard(self, win, key, scancode, action, mods):
-        #print("keyboard: ", win, key, scancode, action, mods)
+        # print("keyboard: ", win, key, scancode, action, mods)
 
         if action == glfw.PRESS:
             # ESC to quit
@@ -257,22 +255,44 @@ class RenderWindow:
                 self.scene.clear()
             if key == glfw.KEY_S:
                 self.scene.show_spline = not self.scene.show_spline
-
             if key == glfw.KEY_T:
                 if self.scene.curve_type == 'casteljau':
                     self.scene.curve_type = 'subdivide'
                 else:
                     self.scene.curve_type = 'casteljau'
+            if key == glfw.KEY_K:
+                if mods & glfw.MOD_SHIFT:
+                    self.scene.degree += 1
+                elif self.scene.degree > 1:
+                    self.scene.degree -= 1
 
+                # Re-render curve
+                self.scene.points_on_curve = self.scene.curve_callback(
+                    self.scene.control_points,
+                    self.scene.degree,
+                    self.scene.num_curve_pts,
+                    self.scene.curve_type
+                )
+            if key == glfw.KEY_M:
+                if mods & glfw.MOD_SHIFT:
+                    self.scene.num_curve_pts += 10
+                elif self.scene.num_curve_pts > 10:
+                    self.scene.num_curve_pts -= 10
 
+                # Re-render curve
+                self.scene.points_on_curve = self.scene.curve_callback(
+                    self.scene.control_points,
+                    self.scene.degree,
+                    self.scene.num_curve_pts,
+                    self.scene.curve_type
+                )
 
     def onSize(self, win, width, height):
-        #print("onsize: ", win, width, height)
-        self.width          = width
-        self.height         = height
-        self.ctx.viewport   = (0, 0, self.width, self.height)
+        # print("onsize: ", win, width, height)
+        self.width = width
+        self.height = height
+        self.ctx.viewport = (0, 0, self.width, self.height)
         self.scene.resize(width, height)
-
 
     def run(self):
         # initializer timer
@@ -286,8 +306,8 @@ class RenderWindow:
                 t = currT
 
                 # == Frame-wise IMGUI Setup ===
-                imgui.new_frame()                   # Start new frame context
-                imgui.begin("Controller")     # Start new window context
+                imgui.new_frame()  # Start new frame context
+                imgui.begin("Controller")  # Start new window context
 
                 # Define UI Elements
                 if imgui.button("Clear (C)"):
@@ -302,18 +322,17 @@ class RenderWindow:
                     else:
                         self.scene.curve_type = 'casteljau'
 
-                imgui.end()                         # End window context
-                imgui.render()                      # Run render callback
-                imgui.end_frame()                   # End frame context
-                self.impl.process_inputs()          # Poll for UI events
+                imgui.end()  # End window context
+                imgui.render()  # Run render callback
+                imgui.end_frame()  # End frame context
+                self.impl.process_inputs()  # Poll for UI events
 
                 # == Rendering GL ===
-                glfw.poll_events()                  # Poll for GLFW events
-                self.ctx.clear()                    # clear viewport
-                self.scene.render()                 # render scene
-                self.impl.render(imgui.get_draw_data()) # render UI
-                glfw.swap_buffers(self.window)      # swap front and back buffer
-
+                glfw.poll_events()  # Poll for GLFW events
+                self.ctx.clear()  # clear viewport
+                self.scene.render()  # render scene
+                self.impl.render(imgui.get_draw_data())  # render UI
+                glfw.swap_buffers(self.window)  # swap front and back buffer
 
         # end
         self.impl.shutdown()
