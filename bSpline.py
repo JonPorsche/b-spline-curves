@@ -44,8 +44,8 @@ def determine_points_on_bezier_curve(points, curve_type):
 
     return [p + 50 * (np.random.random(2) - .5) for p in points]
 
-def get_points_on_bspline_curve(control_points, curve_type='deboor'):
-    degree = 3  # Beispielhaft Grad 3 (Kubisch)
+def get_points_on_bspline_curve(control_points, degree, num_curve_points, curve_type='deboor'):
+    #degree = 3  # Beispielhaft Grad 3 (Kubisch)
     if len(control_points) < degree + 1:
         return control_points
 
@@ -58,7 +58,7 @@ def get_points_on_bspline_curve(control_points, curve_type='deboor'):
     t_min = knot_vector[degree]
     t_max = knot_vector[-degree-1]
 
-    num_curve_points = 100
+    #num_curve_points = 100
     ts = np.linspace(t_min, t_max, num_curve_points)
 
     curve_points = [deboor(degree, control_points, knot_vector, t) for t in ts]
